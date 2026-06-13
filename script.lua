@@ -6,35 +6,50 @@ local chr = ws:WaitForChild("Characters")
 local cam = ws.CurrentCamera
 
 local rmt, cwp, lst, lck = nil, nil, 0, false
+local tgCache, tgLst = nil, 0
+local MAX_RANGE = 500
 
 for _,v in next, getgc(true) do
     if type(v)=="table" and rawget(v,"ShootWeapon") then rmt=v break end
 end
 
 local function gtm()
+    local pn = plr.Name
     for _,f in next, chr:GetChildren() do
-        if f:IsA("Folder") and f:FindFirstChild(plr.Name) then return f.Name end
+        if f:IsA("Folder") and f:FindFirstChild(pn) then return f.Name end
     end
 end
 
 local function gnr(mp)
+    local now = tick()
+    if tgCache and (now - tgLst) < 0.05 then
+        local eh = tgCache.h
+        if eh and eh.Parent then return tgCache end
+        tgCache = nil
+    end
+
     local mt = gtm()
     if not mt then return end
     local nr, nd = nil, math.huge
+
     for _,f in next, chr:GetChildren() do
-        if f:IsA("Folder") and f.Name~=mt then
+        if f:IsA("Folder") and f.Name ~= mt then
             for _,e in next, f:GetChildren() do
                 local eh = e:FindFirstChild("HumanoidRootPart")
+                if not eh then continue end
+
+                local d = (eh.Position - mp).Magnitude
+                if d >= nd or d > MAX_RANGE then continue end
                 local hm = e:FindFirstChildOfClass("Humanoid")
+                if not hm or hm.Health <= 0 then continue end
                 local hd = e:FindFirstChild("Head")
-                if eh and hm and hm.Health>0 then
-                    local tp = hd and hd.Position or eh.Position
-                    local d = (tp-mp).Magnitude
-                    if d<nd then nd,nr = d,{p=tp,h=hd or eh} end
-                end
+                local tp = hd and hd.Position or eh.Position
+                nd, nr = d, {p=tp, h=hd or eh}
             end
         end
     end
+
+    tgCache, tgLst = nr, now
     return nr
 end
 
@@ -48,12 +63,9 @@ end
 local function uwp()
     for _,v in next, getgc(true) do
         if type(v)=="table" then
-            local ok,r = pcall(rawget,v,"IsEquipped")
-            if ok and r and rawget(v,"Identifier") and rawget(v,"Player")==plr then
-                if igw(v) then
-                    cwp = v
-                    return true
-                end
+            local ok, r = pcall(rawget, v, "IsEquipped")
+            if ok and r and rawget(v,"Identifier") and rawget(v,"Player") == plr then
+                if igw(v) then cwp = v return true end
             end
         end
     end
@@ -69,62 +81,60 @@ local function rld()
     local cr = rawget(cwp,"Rounds")
     local cp = rawget(cwp,"Capacity")
     if not (mx and cr and cp) then return end
-    if cr<mx and cp>0 then
+    if cr < mx and cp > 0 then
         lck = true
-        local nd = math.min(mx-cr,cp)
-        cwp.Rounds = cr+nd
-        cwp.Capacity = cp-nd
+        local nd = math.min(mx - cr, cp)
+        cwp.Rounds = cr + nd
+        cwp.Capacity = cp - nd
         task.wait(0.05)
         lck = false
     end
 end
 
 run.Heartbeat:Connect(function()
-    if tick()-lst < 0.1 then return end
+    local now = tick()
+    if now - lst < 0.1 then return end
+
     local mc = plr.Character
     if not mc or mc:GetAttribute("Dead") then return end
     local hrp = mc:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    
-    if not cwp or not rawget(cwp,"IsEquipped") then 
+
+    if not cwp then
         if not uwp() then return end
-    end
-    
-    if not igw(cwp) then 
+    elseif not rawget(cwp,"IsEquipped") then
         cwp = nil
-        return 
+        return
     end
-    
+
+    if not igw(cwp) then cwp = nil return end
+
     local pr = rawget(cwp,"Properties")
     if not pr then return end
     local mx = rawget(pr,"Rounds")
     local cr = rawget(cwp,"Rounds")
-    
-    if cr and mx and cr<mx*0.3 then
-        rld()
-    end
-    
-    if not cr or cr<=0 then 
-        rld()
-        return 
-    end
-    
+    if not (mx and cr) then return end
+
+    if cr < mx * 0.3 then rld() end
+    if cr <= 0 then rld() return end
+
     if not rmt or not rmt.ShootWeapon then return end
-    
+
     local tg = gnr(hrp.Position)
     if not tg then return end
-    
-    lst = tick()
+
+    lst = now
     local og = cam.CFrame.Position
-    local dr = (tg.p-og).Unit
-    
-    cwp.Rounds = cr-1
+    local dr = (tg.p - og).Unit
+    local newRounds = cr - 1
+
+    cwp.Rounds = newRounds
     rmt.ShootWeapon.Send({
         IsSniperScoped = false,
         ShootingHand = "Right",
-        Identifier = cwp.Identifier,
-        Capacity = cwp.Capacity,
-        Rounds = cwp.Rounds,
+        Identifier = rawget(cwp,"Identifier"),
+        Capacity = rawget(cwp,"Capacity"),
+        Rounds = newRounds,
         Bullets = {{
             Direction = dr,
             Origin = og,
@@ -133,7 +143,7 @@ run.Heartbeat:Connect(function()
                 Position = tg.p,
                 Normal = -dr,
                 Material = "Plastic",
-                Distance = (tg.p-og).Magnitude,
+                Distance = (tg.p - og).Magnitude,
                 Exit = false
             }}
         }}
@@ -147,7 +157,7 @@ task.spawn(function()
             local pr = rawget(cwp,"Properties")
             if pr and cr then
                 local mx = rawget(pr,"Rounds")
-                if mx and cr<mx then rld() end
+                if mx and cr < mx then rld() end
             end
         end
     end
