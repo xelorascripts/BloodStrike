@@ -7,7 +7,17 @@ local cam = ws.CurrentCamera
 
 local rmt, cwp, lst, lck = nil, nil, 0, false
 local tgCache, tgLst = nil, 0
-local MAX_RANGE = 500
+local MAX_RANGE = 250  
+local LOS_CHECK = true 
+
+
+local UWP_SCAN_INTERVAL = 0.6
+local lastUwpScan = 0
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType                  = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater                 = true
+rayParams.RespectCanCollide           = false
 
 for _,v in next, getgc(true) do
     if type(v)=="table" and rawget(v,"ShootWeapon") then rmt=v break end
@@ -44,7 +54,7 @@ local function gnr(mp)
                 if not hm or hm.Health <= 0 then continue end
                 local hd = e:FindFirstChild("Head")
                 local tp = hd and hd.Position or eh.Position
-                nd, nr = d, {p=tp, h=hd or eh}
+                nd, nr = d, {p=tp, h=hd or eh, char=e}
             end
         end
     end
@@ -101,6 +111,9 @@ run.Heartbeat:Connect(function()
     if not hrp then return end
 
     if not cwp then
+
+        if now - lastUwpScan < UWP_SCAN_INTERVAL then return end
+        lastUwpScan = now
         if not uwp() then return end
     elseif not rawget(cwp,"IsEquipped") then
         cwp = nil
@@ -123,9 +136,20 @@ run.Heartbeat:Connect(function()
     local tg = gnr(hrp.Position)
     if not tg then return end
 
-    lst = now
     local og = cam.CFrame.Position
     local dr = (tg.p - og).Unit
+
+
+    if LOS_CHECK then
+        rayParams.FilterDescendantsInstances = { mc, tg.char }
+        local hit = workspace:Raycast(og, (tg.p - og), rayParams)
+        if hit then
+
+            return
+        end
+    end
+
+    lst = now
     local newRounds = cr - 1
 
     cwp.Rounds = newRounds
